@@ -1,16 +1,20 @@
 # pontem
-Treat PySpark DataFrame like pandas.  
+Treat PySpark DataFrames like pandas.  
 
 _This is currently just a hobby project, not suitable for use._
 ---
 
 Turn somethinig like this:  
 ```python
-df = df.withColumn('new_col', udf(lambda col: col * 2), df['other_col'])
+# Pure PySpark API; df is type pyspark.sql.DataFrame
+def multiply(n):
+    return udf(lambda col: col * 2, FloatType())
+df = df.withColumn('new_col', df.select(multiply(2)(df['other_col'])))
 ```  
 
 ...into this:  
 ```python
+# Using pontem.core.DataFrame object.
 df['new_col'] = df['other_col'] * 2
 ```
 
