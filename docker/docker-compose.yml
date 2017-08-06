@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+    pontem-box:
+        build:
+            context: ./../
+            dockerfile: ./docker/Dockerfile            
+        image: milesg/pontem:0.0.1
+        container_name: pontem-box
+        volumes:
+            - ./../:/workdir
+        ports:
+            - 8888:8888
+        command: [jupyter, notebook, --ip, "0.0.0.0", --allow-root, --no-browser, --port, "8888"]
