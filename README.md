@@ -8,7 +8,7 @@ Turn somethinig like this:
 ```python
 # Pure PySpark API; df is type pyspark.sql.DataFrame
 def multiply(n):
-    return udf(lambda col: col * 2, FloatType())
+    return udf(lambda col: col * n, FloatType())
 df = df.withColumn('new_col', df.select(multiply(2)(df['other_col'])))
 ```  
 
