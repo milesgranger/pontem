@@ -1,6 +1,3 @@
-import numpy as np
-import pandas as pd
-
 from typing import Iterable
 
 import pyspark.sql.types as ptypes
@@ -32,7 +29,7 @@ class Series(DataFrame):
             self.sc = SparkContext(self.sc) if type(self.sc) != SparkContext else self.sc
             self.series = sc.parallelize(data)
             self.sc = SQLContext(self.sc)
-            self.series = self.series.map(lambda row: Row(**{name: row}))
+            self.series = self.series.zipWithIndex().map(lambda row: Row(name=row[0], index=row[1]))
             self.series = self.sc.createDataFrame(self.series)
         else:
             self.series = data
@@ -40,7 +37,7 @@ class Series(DataFrame):
 
         # Set index if available:
         # TODO: Fix this, it does not add even index column.
-        self.series = self.series.withColumn('index', pfuncs.monotonically_increasing_id())
+
 
         # Call the super to make standard RDD methods available.
         super(Series, self).__init__(self.series._jdf, self.sc)
@@ -103,7 +100,6 @@ class Series(DataFrame):
     def min(self):
         """Get the min value of the series"""
         return self.series.select(self.name).rdd.min()[self.name]
-
 
     def head(self, n: int=5):
         """
