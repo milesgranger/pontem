@@ -30,17 +30,14 @@ class Series(DataFrame):
         # Create the spark context and name of series
         self.sc = SparkContext(master='local[*]', appName='pontem') if sc is None else sc
         name = name if name is not None else 0
-        self.name = name
+        self._name = name
 
         # Convert to pyspark.sql.DataFrame if needed
         if type(data) != DataFrame:
             self.sc = SparkContext(self.sc) if type(self.sc) != SparkContext else self.sc
             self._pyspark_series = sc.parallelize(data)
             self.sc = SQLContext(self.sc)
-            self._pyspark_series = self._pyspark_series.zipWithIndex().map(lambda row: Row(**{name: row[0],
-                                                                                            '': row[1]
-                                                                                              })
-                                                                           )
+            self._pyspark_series = self._pyspark_series.zipWithIndex().map(lambda row: Row(**{name: row[0], '': row[1]}))
             self._pyspark_series = self.sc.createDataFrame(self._pyspark_series)  # type: DataFrame
         else:
             self._pyspark_series = data
@@ -85,6 +82,17 @@ class Series(DataFrame):
             pass
         else:
             pass
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, new_name):
+        """Change the name of the series"""
+        self._pyspark_series = self._pyspark_series.select(pfuncs.col(self.index.name),
+                                                           pfuncs.col(self.name).alias(new_name))
+        self._name = new_name
 
     @property
     def shape(self):
