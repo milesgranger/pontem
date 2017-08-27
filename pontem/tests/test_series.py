@@ -4,9 +4,14 @@ from pyspark import SparkContext
 from operator import add, sub, mul, truediv, floordiv
 
 
-# TODO: floordiv overload fails if there are zeros present
-START = 10
-STOP = int(1e3)
+"""
+Tests for pontem.Series
+The majority ensure the behavior of the pontem.Series objects behave like the pandas.Series objects.
+"""
+
+# Globals
+# TODO: floordiv overload fails if there are zeros present in the series.
+DATA = list(range(10, int(1e3)))
 
 
 def test_series_shape(spark_context) -> None:
@@ -18,8 +23,8 @@ def test_series_shape(spark_context) -> None:
     import pontem as pt
     import pandas as pd
 
-    pontem_series = pt.Series(sc=spark_context, data=list(range(START, STOP)))
-    pandas_series = pd.Series(data=list(range(START, STOP)))
+    pontem_series = pt.Series(sc=spark_context, data=DATA)
+    pandas_series = pd.Series(data=DATA)
 
     assert pandas_series.shape == pontem_series.shape, \
         'Resulting series size ({}) does not match passed iterable size ({})'.format(pandas_series.shape, pontem_series.shape)
@@ -33,7 +38,7 @@ def test_series_name_change(spark_context) -> None:
     """
     import pontem as pt
 
-    pontem_series = pt.Series(sc=spark_context, data=list(range(START, STOP)), name='some_name')
+    pontem_series = pt.Series(sc=spark_context, data=DATA, name='some_name')
 
     # Change name by attribute assignment
     pontem_series.name = 'new_name'
@@ -53,7 +58,7 @@ def test_series_index_name_change(spark_context) -> None:
     import pontem as pt
 
     sc = spark_context
-    pontem_series = pt.Series(sc=sc, data=list(range(START, STOP)))
+    pontem_series = pt.Series(sc=sc, data=DATA)
 
     pontem_series.index.name = 'new_name'
 
@@ -79,8 +84,8 @@ def test_series_arithmetic(spark_context: SparkContext, operation: callable, op_
     import pontem as pt
     import pandas as pd
 
-    pontem_series = pt.Series(sc=spark_context, data=list(range(START, STOP)))
-    pandas_series = pd.Series(data=list(range(START, STOP)))
+    pontem_series = pt.Series(sc=spark_context, data=DATA)
+    pandas_series = pd.Series(data=DATA)
 
     # Apply operation if specified.
     if callable(operation):
