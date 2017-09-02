@@ -14,9 +14,8 @@ from pontem.indexes import RangeIndex
 
 class Series(DataFrame):
     """
-    Main Series object for wrapping bridging PySpark with pandas.
+    Main Series object for bridging PySpark with pandas.Series
     """
-
     def __init__(self,
                  sc: Union[SparkContext, SQLContext],
                  data: Union[DataFrame, Iterable, RDD],
@@ -27,7 +26,10 @@ class Series(DataFrame):
         Parameters
         ----------
         sc : SparkContext or any type, is converted to different context types as needed.
-        data : SparkDataFrame, Iterable, or RDD (assumed to have at most two values per row, with last being the values)
+        data : SparkDataFrame, Iterable, or RDD (assumed to have atleast one values per row)
+            if data is a 2d array, it is assumed the 0th position is the index, and 1th position is the series values
+            if data is > 2d array, series name, and index should be numeric indicating the index of them respectively.
+                you can later update the series and index names with assignment; '.name = "foo", .index.name = "bar"'
         name : Optional string value to name the series
         index : Iterable of the same length of data, existing pontem.RangeIndex, or string name to give the index.
 
@@ -45,12 +47,28 @@ class Series(DataFrame):
         # TODO: Put each scenario or the logic below into it's own method.
         # Handle local data which is not a pyspark rdd/dataframe
         if type(data) not in [DataFrame, RDD, PipelinedRDD]:
-            self.sc = SparkContext(self.sc) if type(self.sc) != SparkContext else self.sc
-            self._pyspark_series = sc.parallelize(data)
+
+            # If index is not an iterable or RangeIndex, we define the index manually
+            if type(index) == str or index is None:
+                self._pyspark_series = sc.parallelize(data)
+                self._pyspark_series = self._pyspark_series.zipWithIndex().map(
+                    # Awkward, zipWithIndex() puts index last, series values are 0th index, index is at index 1
+                    lambda row: Row(**{name: row[0], index if index else '': row[1]})
+                )
+
+            # If index is an iterable, zip with data assuming values in data are 0th index as well as for index iterable
+            elif isinstance(index, Iterable):
+                self._pyspark_series = sc.parallelize(zip(index, data))
+                self._pyspark_series = self._pyspark_series.map(
+                    lambda row: Row(**{'': row[0], name: row[1]})
+                )
+
+            else:
+                raise ValueError('Unknown type combination: \ndata type: {}, index type: {}'
+                                 .format(type(data), type(index))
+                                 )
+
             self.sc = SQLContext(self.sc)
-            self._pyspark_series = self._pyspark_series.zipWithIndex().map(
-                lambda row: Row(**{name: row[0], '': row[1]})
-            )
             self._pyspark_series = self.sc.createDataFrame(self._pyspark_series)  # type: DataFrame
 
         # Handle a 1d rdd
