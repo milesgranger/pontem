@@ -122,7 +122,11 @@ class Series(DataFrame):
         self._name = name
         index_name = ''
 
-        self._pyspark_series = DataConverter.combine_index_and_data(sc=sc, data=data, name=name, index_name=index_name)
+        self._pyspark_series = DataConverter.combine_index_and_data(sc=sc,
+                                                                    data=data,
+                                                                    name=name,
+                                                                    index=index, 
+                                                                    index_name=index_name)
 
         self.sc = SQLContext(self.sc)
         self._pyspark_series = self.sc.createDataFrame(self._pyspark_series)  # type: DataFrame

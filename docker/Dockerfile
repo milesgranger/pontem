@@ -11,4 +11,5 @@ RUN pip install pytest coverage pytest-runner pytest-spark
 ENV PYSPARK_PYTHON /anaconda/bin/python
 ENV PYSPARK_DRIVER_PYTHON ipython
 ENV PYSPARK_DRIVER_PYTHON_OPTS ""
+WORKDIR /workdir
 EXPOSE 8888
