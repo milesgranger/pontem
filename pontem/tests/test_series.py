@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import pytest
+import numpy as np
 from pyspark import SparkContext
 from operator import add, sub, mul, truediv, floordiv
 
@@ -73,9 +74,9 @@ def test_series_index_name_change(spark_context) -> None:
 
 @pytest.mark.parametrize('op_against_self', [True, False], ids=lambda val: 'pontem.Series' if val else 'scalar value')
 @pytest.mark.parametrize('operation', [None, add, sub, mul, truediv, floordiv], ids=lambda _id: _id.__name__ if _id else 'None')
-def test_series_arithmetic(spark_context: SparkContext, operation: callable, op_against_self: bool) -> None:
+def test_series_arithmetic_overloading(spark_context: SparkContext, operation: callable, op_against_self: bool) -> None:
     """
-    Test the arithmetic matches the pandas.Series
+    Test the arithmetic overloading matches the pandas.Series
     Applies the overloading operator against the series and an integer or itself.
     :param spark_context - SparkContext object
     :param operation - The arithmetic operator to be applied
@@ -112,3 +113,27 @@ def test_series_arithmetic(spark_context: SparkContext, operation: callable, op_
          .format(operation.__name__ if callable(operation) else 'None', pontem_series.mean(), pandas_series.mean())
          )
 
+
+@pytest.mark.parametrize('index',
+                         [
+                             [1, 2, 3, 4, 5],
+                             np.array([1, 2, 3, 4, 5]),
+                             range(5),
+                             None
+                         ],
+                         ids=lambda idx: 'index type: {}'.format(type(idx))
+                         )
+@pytest.mark.parametrize('data',
+                         [
+                             [1, 2, 3, 4, 5],
+                             np.array([1, 2, 3, 4, 5]),
+                             range(5)
+                         ],
+                         ids=lambda _data: 'data type: {}'.format(type(_data))
+                         )
+def test_series_construction(spark_context, index, data):
+    """
+    Test various combinations of putting together a pontem series from index and data types
+    """
+    import pontem as pt
+    series = pt.Series(sc=spark_context, data=data, name='series_name', index=index)

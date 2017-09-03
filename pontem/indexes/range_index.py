@@ -8,8 +8,8 @@ class RangeIndex:
     """
     Pontem RangIndex
     """
-    def __init__(self, series):
-        self._name = ''
+    def __init__(self, series, index_name: str=''):
+        self._name = index_name
         self.series = series
 
     @property

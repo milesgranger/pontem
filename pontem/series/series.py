@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import warnings
+
 from operator import mul, add, sub, truediv, floordiv
 from typing import Iterable, Optional, Union
 
@@ -10,83 +12,7 @@ from pyspark.rdd import RDD, PipelinedRDD
 from pyspark.sql import Row, DataFrame
 
 from pontem.indexes import RangeIndex
-
-
-class DataConverter:
-    """
-    Helper class to convert passed data types into target types
-    """
-
-    @classmethod
-    def combine_index_and_data(cls,
-                               sc: SparkContext,
-                               data: Union[DataFrame, RDD, Iterable],
-                               name: str,
-                               index: Optional[Union[RangeIndex, Iterable, PipelinedRDD, RDD]],
-                               index_name: str
-                               ) -> RDD:
-        """
-        Take SparkContext and join data and index suitable for SQLContext.createDataFrame(rdd)
-        :param sc: SparkContext
-        :param data: Data of almost any time which is iterable or a spark RDD or dataframe
-        :param name: name of the target column
-        :param index: same as type data
-        :param index_name:  name of the target index column in the rdd
-        :return: pyspark.rdd where the collection represents Row() types
-        """
-        # TODO: Put each scenario or the logic below into it's own method.
-        # Handle data which is not a pyspark rdd/dataframe but is iterable
-        if type(data) not in [DataFrame, RDD, PipelinedRDD]:
-
-            # If index is an iterable, zip with data assuming values in data are 0th index as well as for index iterable
-            if isinstance(index, Iterable):
-                _pyspark_series = sc.parallelize(zip(data, index))
-                _pyspark_series = _pyspark_series.map(
-                    lambda row: Row(**{name: row[0], index_name: row[-1]})
-                )
-
-            elif index is None:
-                _pyspark_series = sc.parallelize(data)
-                _pyspark_series = _pyspark_series.zipWithIndex().map(
-                    lambda row: Row(**{name: row[0], index_name: row[-1]})
-                )
-
-            elif type(index) in [RDD, PipelinedRDD]:
-                _pyspark_series = sc.parallelize(data).zip(index).map(
-                    lambda row: Row(**{name: row[0], index_name: row[-1]})
-                )
-
-        # Handle data which is a 1d rdd
-        elif type(data) in [DataFrame, RDD, PipelinedRDD] and len(data.take(1)) == 1:
-
-            if isinstance(index, Iterable):
-                index = sc.parallelize(index)
-
-            if type(index) in [RDD, PipelinedRDD]:
-                _pyspark_series = data.zip(index).map(
-                    lambda row: Row(**{name: row[0], index_name: row[-1]})
-                )
-            else:
-                _pyspark_series = data.zipWithIndex().map(
-                    lambda row: Row(**{name: row[0], index_name: row[-1]})
-                )
-
-        # Handle a >1d rdd and each element is type pyspark.sql.Row
-        elif type(data) in [RDD, PipelinedRDD] and len(data.take(1)) > 1:
-
-            if name is None:
-                raise ValueError('If supplying an RDD which has elements of lengths > 1, the name must be '
-                                 'provides as either numeric, indicating the index of the values in the RDD '
-                                 'or string implying the RDD is made up of Row and "name" exists within the RDD')
-
-            _pyspark_series = data.zipWithIndex().map(
-                lambda row: Row(**{str(name): row[name], index_name: row[-1]})
-            )
-
-        else:
-            raise RuntimeError('Unknown combination of data types!')
-
-        return _pyspark_series
+from pontem.series.data_prep import PontemDataPrepper
 
 
 class Series(DataFrame):
@@ -115,24 +41,35 @@ class Series(DataFrame):
         pontem.Series - Intended to have similar interface as a pandas.Series
         """
 
-        # Create the spark context and name of series
-        self.sc = SparkContext(master='local[*]', appName='pontem') if sc is None else sc
-        self.sc = sc._sc if type(self.sc) != SparkContext else self.sc
-        name = name if name is not None and name != '' else 'None'  # Row names must be strings, if None make it str
-        self._name = name
+        # Create the spark context or modify it back to type SparkContext, or try to create one
+        if sc is None:
+            warnings.warn('SparkContext is NoneType; trying to create one using master="local[*]", appName="pontem"')
+            self.sc = SparkContext(master='local[*]', appName='pontem')  # type: SparkContext
+        else:
+            self.sc = sc._sc if type(sc) != SparkContext else sc  # type: SparkContext
+
+        # Default name of series is 'None' (has to be string type) and cannot be '', which is the default for index
+        self._name = name if name is not None and name != '' else 'None'  # Row names must be strings, if None make it str
+
+        # Check if index name is within the passed index
         index_name = ''
+        if type(index) in [RDD, PipelinedRDD] and type(index.first()) == Row:
+            index_name = index_name if not next(iter(index.first().asDict()), None) else next(iter(index.first().asDict()))
 
-        self._pyspark_series = DataConverter.combine_index_and_data(sc=sc,
-                                                                    data=data,
-                                                                    name=name,
-                                                                    index=index, 
-                                                                    index_name=index_name)
+        # Index and data may be different types; combine them into a suitable RDD, collection of [Row(*cols), ...]
+        # where each column represents the index and the values of the series.
+        self._pyspark_series = PontemDataPrepper.combine_index_and_data(sc=self.sc,
+                                                                        data=data,
+                                                                        name=self.name,
+                                                                        index=index,
+                                                                        index_name=index_name)
 
+        # Convert RDD.collect() == [Row(name=..., index.name=...), ...] to a dataframe
         self.sc = SQLContext(self.sc)
         self._pyspark_series = self.sc.createDataFrame(self._pyspark_series)  # type: DataFrame
 
         # Set index
-        self.index = RangeIndex(self)
+        self.index = RangeIndex(self, index_name=index_name)
         self.index.name = index_name
 
         # Call the super to make standard RDD methods available.
@@ -156,7 +93,11 @@ class Series(DataFrame):
         result_rdd = self._pyspark_series.rdd.map(
             lambda row: Row(**{index_name: row[index_name], series_name: func(row[series_name], *args, **kwargs)})
         )
-        return Series(sc=self.sc, data=result_rdd, name=self.name, index=self.index.name)
+        return Series(sc=self.sc,
+                      data=result_rdd.map(lambda row: Row(**{series_name: row[series_name]})),
+                      name=series_name,
+                      index=result_rdd.map(lambda row: Row(**{index_name: row[index_name]}))
+                      )
 
 
     def map(self, arg: Union[callable, dict],
